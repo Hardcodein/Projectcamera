@@ -1,10 +1,11 @@
+import imutils
 import numpy as np
 import time
-import imutils
+
 import cv2
 
 avg = None
-video = cv2.VideoCapture(0)
+video = cv2.VideoCapture("rtsp://admin:admin@192.168.0.182/user=admin_password=admin_channel=1_stream=0.sdp")
 xvalues = list()
 motion = list()
 count1 = 0
@@ -31,7 +32,8 @@ while 1:
     flag = True
     text = ""
 
-    frame = imutils.resize(frame, width=500)
+    frame = imutils.resize(frame, width=1280,height=720)
+
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (21, 21), 0)
 
@@ -48,7 +50,7 @@ while 1:
     ( cnts, _) = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     for c in cnts:
-        if cv2.contourArea(c) < 5000:
+        if cv2.contourArea(c) < 150000:
             continue
         (x, y, w, h) = cv2.boundingRect(c)
         xvalues.append(x)
@@ -75,8 +77,7 @@ while 1:
         xvalues = list()
         motion = list()
 
-    cv2.line(frame, (260, 0), (260, 480), (0, 255, 0), 2)
-    cv2.line(frame, (420, 0), (420, 480), (0, 255, 0), 2)
+
     cv2.putText(frame, "In: {}".format(count1), (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
     cv2.putText(frame, "Out: {}".format(count2), (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
     cv2.imshow("Frame", frame)
