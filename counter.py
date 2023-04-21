@@ -10,33 +10,35 @@ def center(x, y, w, h):
     return cx, cy
 
 
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(0)  # Rtsp Адрес при работе на камере в аудитории 221 вставить "rtsp://admin:admin@192.168.0.182/user=admin_password=admin_channel=1_stream=0.sdp"
+fgbg = cv2.createBackgroundSubtractorMOG2()  # Обнаружение движения
 
-fgbg = cv2.createBackgroundSubtractorMOG2()
+detects = []  #Обнаружение
 
-detects = []
+posL = 250 # Размещение синей линии
+offset = 100   # Смещение линии границ (голубых)
 
-posL = 150
-offset = 30
+xy1 = (70, posL)  # Начальная точка линий относитель левой стороны окна
+xy2 = (500, posL)  #Начальная точка линий относитель правой стороны окна
 
-xy1 = (20, posL)
-xy2 = (300, posL)
-
-total = 0
+total = 0 # Итог
 
 up = 0
 down = 0
 
 while 1:
     ret, frame = cap.read()
+    frame = cv2.GaussianBlur(frame, (51, 51), 0)
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    # cv2.imshow("gray", gray)
+    #cv2.imshow("gray", gray)
 
     fgmask = fgbg.apply(gray)
     # cv2.imshow("fgmask", fgmask)
 
     retval, th = cv2.threshold(fgmask, 200, 255, cv2.THRESH_BINARY)
+    th  = cv2.adaptiveThreshold(fgmask, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                          cv2.THRESH_BINARY, 11, 2)
     # cv2.imshow("th", th)
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
@@ -63,7 +65,7 @@ while 1:
 
         area = cv2.contourArea(cnt)
 
-        if int(area) > 20000:
+        if int(area) > 15000:
             centro = center(x, y, w, h)
 
             cv2.putText(frame, str(i), (x + 5, y + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
