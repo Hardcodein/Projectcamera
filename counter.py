@@ -1,92 +1,122 @@
-import imutils
 import numpy as np
-import time
-
 import cv2
 
-avg = None
-video = cv2.VideoCapture("rtsp://admin:admin@192.168.0.182/user=admin_password=admin_channel=1_stream=0.sdp")
-xvalues = list()
-motion = list()
-count1 = 0
-count2 = 0
+
+def center(x, y, w, h):
+    x1 = int(w / 2)
+    y1 = int(h / 2)
+    cx = x + x1
+    cy = y + y1
+    return cx, cy
 
 
-def find_majority(k):
-    myMap = {}
-    maximum = ('', 0)  # (occurring element, occurrences)
-    for n in k:
-        if n in myMap:
-            myMap[n] += 1
-        else:
-            myMap[n] = 1
+cap = cv2.VideoCapture(0)  # Rtsp Адрес при работе на камере в аудитории 221 вставить "rtsp://admin:admin@192.168.0.182/user=admin_password=admin_channel=1_stream=0.sdp"
+fgbg = cv2.createBackgroundSubtractorMOG2()  # Обнаружение движения
 
-        # Keep track of maximum on the go
-        if myMap[n] > maximum[1]: maximum = (n, myMap[n])
+detects = []  #Обнаружение
 
-    return maximum
+posL = 250 # Размещение синей линии
+offset = 100   # Смещение линии границ (голубых)
 
+xy1 = (70, posL)  # Начальная точка линий относитель левой стороны окна
+xy2 = (500, posL)  #Начальная точка линий относитель правой стороны окна
+
+total = 0 # Итог
+
+up = 0
+down = 0
 
 while 1:
-    ret, frame = video.read()
-    flag = True
-    text = ""
-
-    frame = imutils.resize(frame, width=1280,height=720)
+    ret, frame = cap.read()
+    frame = cv2.GaussianBlur(frame, (51, 51), 0)
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (21, 21), 0)
+    #cv2.imshow("gray", gray)
 
-    if avg is None:
+    fgmask = fgbg.apply(gray)
+    # cv2.imshow("fgmask", fgmask)
 
-        "[INFO] starting background model..."
-        avg = gray.copy().astype("float")
-        continue
+    retval, th = cv2.threshold(fgmask, 200, 255, cv2.THRESH_BINARY)
+    th  = cv2.adaptiveThreshold(fgmask, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                          cv2.THRESH_BINARY, 11, 2)
+    # cv2.imshow("th", th)
 
-    cv2.accumulateWeighted(gray, avg, 0.5)
-    frameDelta = cv2.absdiff(gray, cv2.convertScaleAbs(avg))
-    thresh = cv2.threshold(frameDelta, 5, 255, cv2.THRESH_BINARY)[1]
-    thresh = cv2.dilate(thresh, None, iterations=2)
-    ( cnts, _) = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
 
-    for c in cnts:
-        if cv2.contourArea(c) < 150000:
-            continue
-        (x, y, w, h) = cv2.boundingRect(c)
-        xvalues.append(x)
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
-        flag = False
+    opening = cv2.morphologyEx(th, cv2.MORPH_OPEN, kernel, iterations=2)
+    # cv2.imshow("opening", opening)
 
-    no_x = len(xvalues)
+    dilation = cv2.dilate(opening, kernel, iterations=8)
+    # cv2.imshow("dilation", dilation)
 
-    if (no_x > 2):
-        difference = xvalues[no_x - 1] - xvalues[no_x - 2]
-        if (difference > 0):
-            motion.append(1)
-        else:
-            motion.append(0)
+    closing = cv2.morphologyEx(dilation, cv2.MORPH_CLOSE, kernel, iterations=8)
+    cv2.imshow("closing", closing)
 
-    if flag is True:
-        if (no_x > 5):
-            val, times = find_majority(motion)
-            if val == 1 and times >= 15:
-                count1 += 1
+    cv2.line(frame, xy1, xy2, (255, 0, 0), 3)
+
+    cv2.line(frame, (xy1[0], posL - offset), (xy2[0], posL - offset), (255, 255, 0), 2)
+
+    cv2.line(frame, (xy1[0], posL + offset), (xy2[0], posL + offset), (255, 255, 0), 2)
+
+    contours, hierarchy = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    i = 0
+    for cnt in contours:
+        (x, y, w, h) = cv2.boundingRect(cnt)
+
+        area = cv2.contourArea(cnt)
+
+        if int(area) > 15000:
+            centro = center(x, y, w, h)
+
+            cv2.putText(frame, str(i), (x + 5, y + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+            cv2.circle(frame, centro, 4, (0, 0, 255), -1)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            if len(detects) <= i:
+                detects.append([])
+            if centro[1] > posL - offset and centro[1] < posL + offset:
+                detects[i].append(centro)
             else:
-                count2 += 1
+                detects[i].clear()
+            i += 1
 
-        xvalues = list()
-        motion = list()
+    if i == 0:
+        detects.clear()
 
+    i = 0
 
-    cv2.putText(frame, "In: {}".format(count1), (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-    cv2.putText(frame, "Out: {}".format(count2), (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-    cv2.imshow("Frame", frame)
-    cv2.imshow("Gray", gray)
-    cv2.imshow("FrameDelta", frameDelta)
+    if len(contours) == 0:
+        detects.clear()
 
-    key = cv2.waitKey(1) & 0xFF
-    if key == 27:
+    else:
+
+        for detect in detects:
+            for (c, l) in enumerate(detect):
+
+                if detect[c - 1][1] < posL and l[1] > posL:
+                    detect.clear()
+                    up += 1
+                    total += 1
+                    cv2.line(frame, xy1, xy2, (0, 255, 0), 5)
+                    continue
+
+                if detect[c - 1][1] > posL and l[1] < posL:
+                    detect.clear()
+                    down += 1
+                    total += 1
+                    cv2.line(frame, xy1, xy2, (0, 0, 255), 5)
+                    continue
+
+                if c > 0:
+                    cv2.line(frame, detect[c - 1], l, (0, 0, 255), 1)
+
+    cv2.putText(frame, "Sum: " + str(total), (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+    cv2.putText(frame, "IN: " + str(up), (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+    cv2.putText(frame, "out: " + str(down), (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+
+    cv2.imshow("frame", frame)
+
+    if cv2.waitKey(30) & 0xFF == ord('q'):
         break
 
-video.release()
+cap.release()
 cv2.destroyAllWindows()
