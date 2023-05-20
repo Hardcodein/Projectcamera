@@ -1,3 +1,4 @@
+import imutils
 import numpy as np
 import cv2
 
@@ -10,16 +11,16 @@ def center(x, y, w, h):
     return cx, cy
 
 
-cap = cv2.VideoCapture(0)  # Rtsp Адрес при работе на камере в аудитории 221 вставить "rtsp://admin:admin@192.168.0.182/user=admin_password=admin_channel=1_stream=0.sdp"
+cap = cv2.VideoCapture("rtsp://admin:admin@192.168.0.182/user=admin_password=admin_channel=1_stream=0.sdp")  # Rtsp Адрес при работе на камере в аудитории 221 вставить "rtsp://admin:admin@192.168.0.182/user=admin_password=admin_channel=1_stream=0.sdp"
 fgbg = cv2.createBackgroundSubtractorMOG2()  # Обнаружение движения
 
 detects = []  #Обнаружение
 
-posL = 250 # Размещение синей линии
-offset = 100   # Смещение линии границ (голубых)
+posL = 350 # Размещение синей линии
+offset = 200   # Смещение линии границ (голубых)
 
-xy1 = (70, posL)  # Начальная точка линий относитель левой стороны окна
-xy2 = (500, posL)  #Начальная точка линий относитель правой стороны окна
+xy1 = (300, posL)  # Начальная точка линий относитель левой стороны окна
+xy2 = (950, posL)  #Начальная точка линий относитель правой стороны окна
 
 total = 0 # Итог
 
@@ -28,17 +29,23 @@ down = 0
 
 while 1:
     ret, frame = cap.read()
-    frame = cv2.GaussianBlur(frame, (51, 51), 0)
-
+    #frame = cv2.GaussianBlur(frame, (51, 51), 0)
+    frame = imutils.rotate(frame,angle=270)
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     #cv2.imshow("gray", gray)
 
-    fgmask = fgbg.apply(gray)
-    # cv2.imshow("fgmask", fgmask)
 
+
+    fgmask = fgbg.apply(gray)
+
+    fgmask = fgmask * (fgmask > 210)
+    fgmask = cv2.GaussianBlur(fgmask, (3,3), 0)
+    fgmask = fgmask * (fgmask > 210)
+
+    cv2.imshow("fgmask", fgmask)
     retval, th = cv2.threshold(fgmask, 200, 255, cv2.THRESH_BINARY)
-    th  = cv2.adaptiveThreshold(fgmask, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
-                          cv2.THRESH_BINARY, 11, 2)
+    th = cv2.adaptiveThreshold(fgmask, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                               cv2.THRESH_BINARY, 11, 2)
     # cv2.imshow("th", th)
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
@@ -50,7 +57,7 @@ while 1:
     # cv2.imshow("dilation", dilation)
 
     closing = cv2.morphologyEx(dilation, cv2.MORPH_CLOSE, kernel, iterations=8)
-    cv2.imshow("closing", closing)
+    #cv2.imshow("closing", closing)
 
     cv2.line(frame, xy1, xy2, (255, 0, 0), 3)
 
@@ -58,14 +65,14 @@ while 1:
 
     cv2.line(frame, (xy1[0], posL + offset), (xy2[0], posL + offset), (255, 255, 0), 2)
 
-    contours, hierarchy = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours, hierarchy = cv2.findContours(fgmask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     i = 0
     for cnt in contours:
         (x, y, w, h) = cv2.boundingRect(cnt)
 
         area = cv2.contourArea(cnt)
 
-        if int(area) > 15000:
+        if int(area) > 20000:
             centro = center(x, y, w, h)
 
             cv2.putText(frame, str(i), (x + 5, y + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
@@ -95,23 +102,24 @@ while 1:
                 if detect[c - 1][1] < posL and l[1] > posL:
                     detect.clear()
                     up += 1
-                    total += 1
+                    #total += 1
                     cv2.line(frame, xy1, xy2, (0, 255, 0), 5)
                     continue
 
                 if detect[c - 1][1] > posL and l[1] < posL:
                     detect.clear()
                     down += 1
-                    total += 1
+                    #total += 1
                     cv2.line(frame, xy1, xy2, (0, 0, 255), 5)
                     continue
 
                 if c > 0:
                     cv2.line(frame, detect[c - 1], l, (0, 0, 255), 1)
 
-    cv2.putText(frame, "Sum: " + str(total), (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-    cv2.putText(frame, "IN: " + str(up), (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-    cv2.putText(frame, "out: " + str(down), (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+    alltotal = up - down
+    cv2.putText(frame, ("В помещении : " + str(alltotal)), (10, 40), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 255), 2)
+    cv2.putText(frame, "Вошло: " + str(up), (10, 80), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 0), 2)
+    cv2.putText(frame, "Вышло: " + str(down), (10, 120), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2)
 
     cv2.imshow("frame", frame)
 
